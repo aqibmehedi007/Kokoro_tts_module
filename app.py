@@ -41,6 +41,141 @@ def check_and_install_requirements():
             print("💡 Please run: pip install -r requirements.txt")
             return False
 
+def check_gpu_availability():
+    """Check if GPU/CUDA is available"""
+    try:
+        import subprocess
+        result = subprocess.run(['nvidia-smi'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            print("🚀 GPU detected - CUDA acceleration will be enabled")
+            return True
+        else:
+            print("💻 No GPU detected - will run on CPU (slower)")
+            return False
+    except:
+        print("💻 Could not detect GPU - will run on CPU (slower)")
+        return False
+
+def check_and_install_llama_cpp():
+    """Check if llama-cpp-python is installed with CUDA support, install if missing."""
+    try:
+        import llama_cpp
+        print("✅ llama-cpp-python found")
+        
+        # Test if CUDA support is available
+        print("🔧 Testing CUDA support...")
+        try:
+            # Set CUDA environment variables
+            os.environ['GGML_CUDA_FORCE_CUBLAS'] = '1'
+            
+            # Try to create a simple model to test CUDA
+            test_model = llama_cpp.Llama(
+                model_path=model_path,
+                n_gpu_layers=1,  # Test with 1 layer
+                n_ctx=512,       # Small context
+                verbose=False    # Disable verbose output
+            )
+            
+            # Test a simple generation to verify GPU is working
+            test_output = test_model("Test", max_tokens=5, stop=["\n"])
+            print("✅ CUDA support verified - GPU offload working!")
+            return True
+        except Exception as e:
+            print(f"⚠️ CUDA test failed: {e}")
+            print("🔧 Installing CUDA-enabled version...")
+            return install_cuda_llama_cpp()
+            
+    except ImportError:
+        print("🔧 llama-cpp-python not found. Installing with CUDA support...")
+        return install_cuda_llama_cpp()
+
+def install_cuda_llama_cpp():
+    """Install the CUDA-enabled version of llama-cpp-python using JamePeng wheel."""
+    print("🔧 Installing llama-cpp-python with CUDA support using JamePeng wheel...")
+    
+    # Create pre-build-wheel directory
+    wheel_dir = Path("pre-build-wheel")
+    wheel_dir.mkdir(exist_ok=True)
+    
+    # JamePeng wheel URL for Python 3.11 with CUDA 12.8 support
+    wheel_url = "https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.16-cu128-AVX2-win-20250831/llama_cpp_python-0.3.16-cp311-cp311-win_amd64.whl"
+    wheel_file = wheel_dir / "llama_cpp_python-0.3.16-cp311-cp311-win_amd64.whl"
+    
+    try:
+        # First uninstall any existing version
+        subprocess.run([sys.executable, "-m", "pip", "uninstall", "llama-cpp-python", "-y"], 
+                      capture_output=True, text=True)
+        
+        # Download wheel if not exists
+        if not wheel_file.exists():
+            print("📥 Downloading JamePeng CUDA wheel...")
+            print(f"📡 Downloading from: {wheel_url}")
+            print(f"💾 Saving to: {wheel_file}")
+            
+            download_file(wheel_url, wheel_file)
+            print("✅ Wheel downloaded successfully!")
+        else:
+            print(f"✅ Wheel already exists: {wheel_file}")
+        
+        # Install the wheel
+        print("🔧 Installing JamePeng CUDA wheel...")
+        result = subprocess.run([
+            sys.executable, "-m", "pip", "install", 
+            str(wheel_file)
+        ], capture_output=True, text=True, timeout=600)
+        
+        if result.returncode == 0:
+            print("✅ JamePeng CUDA llama-cpp-python installed successfully!")
+            print("🚀 This wheel provides full CUDA 12.8 support for optimal GPU performance")
+            return True
+        else:
+            print(f"❌ Failed to install JamePeng wheel: {result.stderr}")
+            
+            # Fallback to standard CUDA installation
+            print("🔄 Falling back to standard CUDA installation...")
+            result2 = subprocess.run([
+                sys.executable, "-m", "pip", "install", 
+                "llama-cpp-python==0.3.16", 
+                "--extra-index-url", "https://abetlen.github.io/llama-cpp-python/whl/cu128"
+            ], capture_output=True, text=True, timeout=300)
+            
+            if result2.returncode == 0:
+                print("✅ Standard CUDA llama-cpp-python installed")
+                return True
+            else:
+                print(f"❌ All installation methods failed: {result2.stderr}")
+                return False
+                
+    except subprocess.TimeoutExpired:
+        print("❌ Installation timed out. Please install manually:")
+        print(f"💡 pip install {wheel_file}")
+        return False
+    except Exception as e:
+        print(f"❌ Failed to install llama-cpp-python: {e}")
+        return False
+
+def download_file(url: str, filepath: Path, chunk_size: int = 8192):
+    """Download a file with progress bar."""
+    import requests
+    from tqdm import tqdm
+    
+    response = requests.get(url, stream=True)
+    response.raise_for_status()
+    
+    total_size = int(response.headers.get('content-length', 0))
+    
+    with open(filepath, 'wb') as file, tqdm(
+        desc=filepath.name,
+        total=total_size,
+        unit='B',
+        unit_scale=True,
+        unit_divisor=1024,
+    ) as progress_bar:
+        for chunk in response.iter_content(chunk_size=chunk_size):
+            if chunk:
+                file.write(chunk)
+                progress_bar.update(len(chunk))
+
 def download_kokoro_model():
     """Download the Kokoro model file if it doesn't exist"""
     model_path = "./models/Kokoro_espeak_Q4.gguf"
@@ -99,19 +234,31 @@ def download_kokoro_model():
 
 def setup_environment():
     """Complete environment setup"""
-    print("🚀 Setting up QuteVoice TTS Environment...")
+    print("🚀 Setting up Kokoro TTS Module Environment...")
     print("=" * 60)
     
-    # Step 1: Check and install requirements
+    # Step 1: Check GPU availability
+    gpu_available = check_gpu_availability()
+    
+    # Step 2: Check and install requirements
     if not check_and_install_requirements():
         return False
     
-    # Step 2: Download model if needed
+    # Step 3: Check and install llama-cpp-python for GPU support
+    if gpu_available:
+        if not check_and_install_llama_cpp():
+            print("⚠️  GPU support installation failed - continuing with CPU mode")
+    
+    # Step 4: Download model if needed
     if not download_kokoro_model():
         print("⚠️  Continuing without model - some features may not work")
     
     print("=" * 60)
     print("✅ Environment setup complete!")
+    if gpu_available:
+        print("🚀 GPU acceleration enabled - optimal performance expected")
+    else:
+        print("💻 CPU mode - functional but slower performance")
     return True
 
 # Import after setup

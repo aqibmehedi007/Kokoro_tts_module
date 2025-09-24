@@ -167,6 +167,9 @@ logs/
 .cache/
 cache/
 
+# Pre-built wheels directory
+pre-build-wheel/
+
 # Node modules (if any)
 node_modules/
 
