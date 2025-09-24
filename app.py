@@ -115,17 +115,20 @@ def setup_environment():
     return True
 
 # Import after setup
-try:
-    import torch
-    from flask import Flask, render_template, request, jsonify, send_file
-    from kokoro_tts_service import KokoroTTSService
-except ImportError:
-    print("❌ Critical imports failed. Please check your Python environment.")
-    sys.exit(1)
+def import_required_modules():
+    """Import required modules after setup"""
+    try:
+        import torch
+        from flask import Flask, render_template, request, jsonify, send_file
+        from kokoro_tts_service import KokoroTTSService
+        return True
+    except ImportError as e:
+        print(f"❌ Critical imports failed: {e}")
+        print("💡 Please check your Python environment.")
+        return False
 
-app = Flask(__name__)
-
-# Global TTS service
+# Global variables
+app = None
 tts_service = None
 model_path = "./models/Kokoro_espeak_Q4.gguf"
 
@@ -144,6 +147,8 @@ def load_model():
         
         # Try to load the actual Kokoro service
         try:
+            from kokoro_tts_service import KokoroTTSService
+            print("✅ KokoroTTSService imported successfully")
             tts_service = KokoroTTSService(model_path)
             
             # Test if we can initialize
@@ -163,6 +168,11 @@ def load_model():
                 
         except ImportError as e:
             print(f"⚠️  Kokoro library not available: {e}")
+            print("💡 Using demo TTS service instead...")
+            tts_service = DemoTTSService()
+            return True
+        except NameError as e:
+            print(f"⚠️  NameError: {e}")
             print("💡 Using demo TTS service instead...")
             tts_service = DemoTTSService()
             return True
@@ -223,109 +233,117 @@ class DemoTTSService:
             "available_voices": len(self.available_voices)
         }
 
-@app.route('/')
-def index():
-    """Main page"""
-    return render_template('index.html')
+def create_flask_app():
+    """Create Flask application with routes"""
+    from flask import Flask, render_template, request, jsonify, send_file
+    import torch
+    
+    global app
+    app = Flask(__name__)
+    
+    @app.route('/')
+    def index():
+        """Main page"""
+        return render_template('index.html')
 
-@app.route('/generate_speech', methods=['POST'])
-def generate_speech():
-    """Generate speech from text"""
-    try:
-        data = request.get_json()
-        text = data.get('text', '')
-        
-        if not text:
-            return jsonify({'error': 'No text provided'}), 400
-        
-        if tts_service is None or not tts_service.is_available():
-            return jsonify({'error': 'Model not loaded'}), 500
-        
-        # Generate speech using the TTS service
+    @app.route('/generate_speech', methods=['POST'])
+    def generate_speech():
+        """Generate speech from text"""
         try:
-            # Run async function in sync context
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            audio_data = loop.run_until_complete(tts_service.synthesize_speech(text))
-            loop.close()
+            data = request.get_json()
+            text = data.get('text', '')
             
-            # Save audio to temporary file
-            temp_file = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
-            temp_file.write(audio_data)
-            temp_file.close()
+            if not text:
+                return jsonify({'error': 'No text provided'}), 400
             
-            return jsonify({
-                'success': True,
-                'generated_text': f"Audio generated for: {text[:50]}{'...' if len(text) > 50 else ''}",
-                'message': f'Speech generation completed! Audio size: {len(audio_data)} bytes',
-                'audio_ready': True,
-                'text_length': len(text),
-                'audio_path': os.path.basename(temp_file.name),
-                'audio_size': len(audio_data)
-            })
+            if tts_service is None or not tts_service.is_available():
+                return jsonify({'error': 'Model not loaded'}), 500
+            
+            # Generate speech using the TTS service
+            try:
+                # Run async function in sync context
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                audio_data = loop.run_until_complete(tts_service.synthesize_speech(text))
+                loop.close()
+                
+                # Save audio to temporary file
+                temp_file = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
+                temp_file.write(audio_data)
+                temp_file.close()
+                
+                return jsonify({
+                    'success': True,
+                    'generated_text': f"Audio generated for: {text[:50]}{'...' if len(text) > 50 else ''}",
+                    'message': f'Speech generation completed! Audio size: {len(audio_data)} bytes',
+                    'audio_ready': True,
+                    'text_length': len(text),
+                    'audio_path': os.path.basename(temp_file.name),
+                    'audio_size': len(audio_data)
+                })
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+            
         except Exception as e:
             return jsonify({'error': str(e)}), 500
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
-@app.route('/model_status')
-def model_status():
-    """Check if model is loaded"""
-    try:
-        loaded = tts_service is not None and tts_service.is_available()
-        device_info = 'unknown'
-        model_name = 'Unknown'
-        available_voices = 0
-        
-        if tts_service:
-            try:
-                device_info = str(tts_service.device)
-                model_info = tts_service.get_model_info()
-                model_name = model_info.get('model_name', 'Unknown')
-                available_voices = model_info.get('available_voices', 0)
-            except:
-                device_info = 'cuda' if torch.cuda.is_available() else 'cpu'
-                model_name = 'Demo TTS' if isinstance(tts_service, DemoTTSService) else 'Kokoro TTS'
-                available_voices = 1 if isinstance(tts_service, DemoTTSService) else 8
-        
-        return jsonify({
-            'loaded': loaded,
-            'model_path': model_path,
-            'model_exists': os.path.exists(model_path),
-            'device': device_info,
-            'model_name': model_name,
-            'sample_rate': 24000,
-            'available_voices': available_voices,
-            'is_demo_mode': isinstance(tts_service, DemoTTSService) if tts_service else False
-        })
-    except Exception as e:
-        return jsonify({
-            'loaded': False,
-            'error': str(e),
-            'model_path': model_path,
-            'model_exists': os.path.exists(model_path),
-            'is_demo_mode': False
-        })
-
-@app.route('/download_audio/<filename>')
-def download_audio(filename):
-    """Download generated audio file"""
-    try:
-        # Security check - only allow files from temp directory
-        if not filename.endswith('.wav'):
-            return jsonify({'error': 'Invalid file type'}), 400
+    @app.route('/model_status')
+    def model_status():
+        """Check if model is loaded"""
+        try:
+            loaded = tts_service is not None and tts_service.is_available()
+            device_info = 'unknown'
+            model_name = 'Unknown'
+            available_voices = 0
             
-        audio_path = os.path.join(tempfile.gettempdir(), filename)
-        if os.path.exists(audio_path):
-            return send_file(audio_path, as_attachment=True)
-        else:
-            return jsonify({'error': 'Audio file not found'}), 404
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+            if tts_service:
+                try:
+                    device_info = str(tts_service.device)
+                    model_info = tts_service.get_model_info()
+                    model_name = model_info.get('model_name', 'Unknown')
+                    available_voices = model_info.get('available_voices', 0)
+                except:
+                    device_info = 'cuda' if torch.cuda.is_available() else 'cpu'
+                    model_name = 'Demo TTS' if isinstance(tts_service, DemoTTSService) else 'Kokoro TTS'
+                    available_voices = 1 if isinstance(tts_service, DemoTTSService) else 8
+            
+            return jsonify({
+                'loaded': loaded,
+                'model_path': model_path,
+                'model_exists': os.path.exists(model_path),
+                'device': device_info,
+                'model_name': model_name,
+                'sample_rate': 24000,
+                'available_voices': available_voices,
+                'is_demo_mode': isinstance(tts_service, DemoTTSService) if tts_service else False
+            })
+        except Exception as e:
+            return jsonify({
+                'loaded': False,
+                'error': str(e),
+                'model_path': model_path,
+                'model_exists': os.path.exists(model_path),
+                'is_demo_mode': False
+            })
+
+    @app.route('/download_audio/<filename>')
+    def download_audio(filename):
+        """Download generated audio file"""
+        try:
+            # Security check - only allow files from temp directory
+            if not filename.endswith('.wav'):
+                return jsonify({'error': 'Invalid file type'}), 400
+                
+            audio_path = os.path.join(tempfile.gettempdir(), filename)
+            if os.path.exists(audio_path):
+                return send_file(audio_path, as_attachment=True)
+            else:
+                return jsonify({'error': 'Audio file not found'}), 404
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    print("🎤 QuteVoice - Advanced Kokoro TTS Application")
+    print("🎤 Kokoro TTS Module Test - Advanced Application")
     print("🚀 Automated Setup & Launch")
     print("=" * 60)
     
@@ -335,11 +353,15 @@ if __name__ == '__main__':
         print("💡 Please check your Python installation and internet connection")
         sys.exit(1)
     
+    # Import required modules after setup
+    if not import_required_modules():
+        print("❌ Failed to import required modules!")
+        sys.exit(1)
+    
     print("\n🎯 Starting TTS Application...")
     print("=" * 60)
     
     # Check if model exists after setup
-    model_path = "./models/Kokoro_espeak_Q4.gguf"
     if os.path.exists(model_path):
         print(f"✅ Model found: {model_path}")
         print(f"📁 Model size: {os.path.getsize(model_path) / (1024*1024):.1f} MB")
@@ -351,7 +373,10 @@ if __name__ == '__main__':
     
     # Load the model on startup
     if load_model():
-        print("\n🌐 Starting web server...")
+        print("\n🌐 Creating web application...")
+        create_flask_app()
+        
+        print("🌐 Starting web server...")
         print("📍 Open your browser to: http://localhost:5000")
         print("🛑 Press Ctrl+C to stop the server")
         print("=" * 60)
@@ -365,6 +390,9 @@ if __name__ == '__main__':
             print("💡 Please check the logs above for more details")
     else:
         print("\n⚠️  Model failed to load - running in limited mode")
+        print("🌐 Creating web application...")
+        create_flask_app()
+        
         print("🌐 Starting web server anyway...")
         print("📍 Open your browser to: http://localhost:5000")
         print("🛑 Press Ctrl+C to stop the server")
