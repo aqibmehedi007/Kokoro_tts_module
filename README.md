@@ -1,91 +1,87 @@
 # Kokoro TTS Module
 
-A powerful Text-to-Speech (TTS) web application using the Kokoro model, featuring a modern Flask-based web interface for converting text to high-quality speech.
+A powerful Text-to-Speech (TTS) web application using the Kokoro Q4 model, featuring an advanced Flask-based web interface with automated setup and model downloading.
 
 ## 🎤 Features
 
-- **High-Quality Speech Synthesis**: Uses the Kokoro TTS model for natural-sounding speech generation
-- **Web Interface**: Modern, responsive web UI built with Flask and HTML/CSS/JavaScript
-- **Multiple Voice Support**: Supports 8 different voices including multilingual options
-- **Real-time Processing**: Asynchronous speech generation with progress indicators
-- **Audio Playback**: Built-in audio player for immediate playback of generated speech
-- **Model Status Monitoring**: Real-time model loading status and health checks
+- **High-Quality Speech Synthesis**: Uses the Kokoro TTS Q4 model (178 MB) for natural-sounding speech
+- **Automated Setup**: Automatically installs dependencies and downloads the model on first run
+- **Web Interface**: Modern, responsive web UI with real-time status monitoring
+- **Demo Mode**: Falls back to demo mode if the Kokoro library isn't available
 - **Cross-Platform**: Works on Windows, macOS, and Linux
+- **One-Click Launch**: Simple startup scripts for easy deployment
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
 - Python 3.8 or higher
-- CUDA-compatible GPU (recommended) or CPU
-- At least 4GB RAM
-- Internet connection for initial setup
+- Internet connection (for initial setup and model download)
+- At least 2GB RAM
+- CUDA-compatible GPU (optional, CPU works too)
 
-### Installation
+### Installation & Launch
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/aqibmehedi007/Kokoro_tts_module.git
-   cd Kokoro_tts_module
-   ```
+**Option 1: One-Click Launch (Recommended)**
+```bash
+# Windows users
+start.bat
 
-2. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+# Cross-platform
+python start.py
+```
 
-3. **Download the Kokoro model**
-   - The model file `Kokoro_espeak_Q8.gguf` should be placed in the `models/` directory
-   - Due to size constraints, the model is not included in the repository
-   - Download the model from: [https://huggingface.co/mmwillet2/Kokoro_GGUF/tree/main](https://huggingface.co/mmwillet2/Kokoro_GGUF/tree/main)
-   - The application will automatically attempt to download the model on first run
+**Option 2: Manual Launch**
+```bash
+# Clone the repository
+git clone https://github.com/aqibmehedi007/Kokoro_tts_module.git
+cd Kokoro_tts_module
 
-4. **Run the application**
-   ```bash
-   python app.py
-   ```
+# Run the application (auto-installs everything)
+python app.py
+```
 
-5. **Access the web interface**
-   - Open your browser and navigate to `http://localhost:5000`
-   - The interface will automatically check model status and guide you through usage
+The application will automatically:
+1. ✅ Check and install Python dependencies
+2. 📥 Download the Kokoro Q4 model (178 MB) from Hugging Face
+3. 🚀 Launch the web interface at `http://localhost:5000`
 
 ## 📁 Project Structure
 
 ```
 Kokoro_tts_module/
-├── app.py                          # Main Flask application (root level)
-├── kokoro_tts_service.py          # Core TTS service implementation
-├── requirements.txt                # Python dependencies
-├── README.md                      # This documentation
-├── models/                        # Model files directory (not tracked in git)
-│   └── Kokoro_espeak_Q8.gguf     # Kokoro TTS model file
-├── templates/                     # HTML templates
-│   └── index.html                # Main web interface
-├── src/                          # Alternative source structure
-│   ├── app.py                    # Alternative Flask app
-│   ├── kokoro_tts_service.py     # Alternative TTS service
-│   ├── tts_demo.py              # Demo implementation
-│   └── templates/
-│       └── index.html           # Alternative template
-└── docs/                        # Additional documentation
-    └── README.md               # Extended documentation
+├── app.py                    # Main Flask application with automated setup
+├── kokoro_tts_service.py    # Core TTS service implementation
+├── requirements.txt          # Python dependencies
+├── README.md                # This documentation
+├── start.py                 # Cross-platform startup script
+├── start.bat                # Windows startup script
+├── .gitignore              # Git ignore rules (excludes models/)
+├── models/                 # Model files directory (auto-created)
+│   └── Kokoro_espeak_Q4.gguf # Kokoro TTS Q4 model (178 MB)
+├── templates/              # HTML templates
+│   └── index.html         # Modern web interface
+└── src/                   # Alternative source structure
+    ├── app.py            # Alternative Flask app
+    ├── kokoro_tts_service.py
+    ├── tts_demo.py       # Demo implementation
+    └── templates/
+        └── index.html
 ```
 
 ## 🎯 Usage
 
 ### Web Interface
 
-1. **Start the server**: Run `python app.py`
-2. **Open browser**: Navigate to `http://localhost:5000`
-3. **Check model status**: The interface will show if the model is loaded
-4. **Enter text**: Type or paste your text in the text area
-5. **Generate speech**: Click "Generate Speech" button
-6. **Play audio**: Use the built-in audio player to listen to the result
+1. **Launch**: Run `python app.py` or use `start.py`/`start.bat`
+2. **Open Browser**: Navigate to `http://localhost:5000`
+3. **Check Status**: The interface shows model loading status automatically
+4. **Enter Text**: Type or paste your text in the text area
+5. **Generate Speech**: Click "Generate Speech" button
+6. **Play Audio**: Use the built-in audio player to listen
 7. **Download**: Optionally download the generated audio file
 
 ### API Endpoints
-
-The application provides several REST API endpoints:
 
 - `GET /` - Main web interface
 - `POST /generate_speech` - Generate speech from text
@@ -108,19 +104,17 @@ status = requests.get('http://localhost:5000/model_status').json()
 
 ## 🔧 Configuration
 
-### Model Configuration
+### Model Information
 
-The TTS service supports various configuration options:
-
-- **Model Path**: Default is `./models/Kokoro_espeak_Q8.gguf`
-- **Device**: Automatically detects CUDA or falls back to CPU
-- **Sample Rate**: 24kHz for high-quality audio
-- **Default Voice**: `af_heart` (high-quality female voice)
+- **Model**: Kokoro TTS Q4 (Quantized 4-bit)
+- **Size**: 178 MB
+- **Source**: [https://huggingface.co/mmwillet2/Kokoro_GGUF/tree/main](https://huggingface.co/mmwillet2/Kokoro_GGUF/tree/main)
+- **Format**: GGUF (GGML Universal Format)
+- **Quality**: High-quality speech synthesis with reduced file size
 
 ### Available Voices
 
 The system supports 8 different voices:
-
 - `af_heart` - Premium female voice (default)
 - `en_heart` - English female voice
 - `es_heart` - Spanish female voice
@@ -131,8 +125,6 @@ The system supports 8 different voices:
 - `ru_heart` - Russian female voice
 
 ### Environment Variables
-
-You can customize the application using environment variables:
 
 ```bash
 export MODEL_PATH="/path/to/your/model.gguf"
@@ -146,25 +138,15 @@ export HOST="0.0.0.0"
 ### Running in Development Mode
 
 ```bash
-# Enable debug mode
 export FLASK_DEBUG=1
 python app.py
 ```
 
 ### Testing
 
-The project includes a demo script for testing:
-
 ```bash
 python src/tts_demo.py
 ```
-
-### Code Structure
-
-- **`app.py`**: Main Flask application with routes and error handling
-- **`kokoro_tts_service.py`**: Core TTS service with async support
-- **`templates/index.html`**: Modern web interface with real-time updates
-- **`requirements.txt`**: All necessary Python dependencies
 
 ## 📋 Dependencies
 
@@ -188,29 +170,32 @@ python src/tts_demo.py
 
 ### Common Issues
 
-1. **Model not found**
-   - Ensure `Kokoro_espeak_Q8.gguf` is in the `models/` directory
-   - Check file permissions and path
+1. **Model download fails**
+   - Check internet connection
+   - Verify firewall settings
+   - Try running as administrator (Windows)
 
-2. **CUDA out of memory**
-   - Reduce batch size or use CPU mode
+2. **Dependencies fail to install**
+   - Ensure Python 3.8+ is installed
+   - Check pip is up to date: `pip install --upgrade pip`
+   - Try installing manually: `pip install -r requirements.txt`
+
+3. **CUDA out of memory**
+   - The Q4 model is optimized for lower memory usage
    - Close other GPU-intensive applications
-
-3. **Audio generation fails**
-   - Check if all dependencies are installed
-   - Verify model file integrity
-   - Check system audio drivers
+   - The app will automatically fall back to CPU if needed
 
 4. **Web interface not loading**
    - Ensure port 5000 is available
    - Check firewall settings
    - Try accessing `http://127.0.0.1:5000`
 
-### Performance Optimization
+### Performance Tips
 
-- **GPU Usage**: Ensure CUDA is properly installed for GPU acceleration
-- **Memory Management**: The service includes automatic memory cleanup
-- **Model Caching**: Model stays loaded in memory for faster subsequent requests
+- **GPU Usage**: CUDA acceleration is automatically detected
+- **Memory Management**: Automatic cleanup after each request
+- **Model Caching**: Model stays loaded for faster subsequent requests
+- **Q4 Optimization**: Smaller model size means faster loading and lower memory usage
 
 ## 📄 License
 
@@ -225,8 +210,8 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 For support and questions:
 
 - Open an issue on GitHub
-- Check the documentation in the `docs/` folder
-- Review the troubleshooting section above
+- Check the troubleshooting section above
+- Review the console output for detailed error messages
 
 ## 🔄 Updates
 
@@ -238,4 +223,4 @@ Stay updated with the latest changes:
 
 ---
 
-**Note**: This application requires the Kokoro TTS model file to function. The model is not included in the repository due to size constraints and should be downloaded separately from [https://huggingface.co/mmwillet2/Kokoro_GGUF/tree/main](https://huggingface.co/mmwillet2/Kokoro_GGUF/tree/main). The application will automatically attempt to download the model on first run.
+**Note**: This application automatically downloads the Kokoro TTS Q4 model (178 MB) from [https://huggingface.co/mmwillet2/Kokoro_GGUF/tree/main](https://huggingface.co/mmwillet2/Kokoro_GGUF/tree/main) on first run. The model is optimized for quality and performance with a smaller file size compared to higher quantization levels.

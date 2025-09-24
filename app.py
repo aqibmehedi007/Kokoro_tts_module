@@ -43,7 +43,7 @@ def check_and_install_requirements():
 
 def download_kokoro_model():
     """Download the Kokoro model file if it doesn't exist"""
-    model_path = "./models/Kokoro_espeak_Q8.gguf"
+    model_path = "./models/Kokoro_espeak_Q4.gguf"
     models_dir = Path("./models")
     
     # Create models directory if it doesn't exist
@@ -56,10 +56,8 @@ def download_kokoro_model():
     print("📥 Model not found. Downloading Kokoro TTS model...")
     print("⚠️  This may take several minutes depending on your internet connection...")
     
-    # Model download URLs from the correct Hugging Face repository
+    # Model download URL from the correct Hugging Face repository (Q4 model)
     model_urls = [
-        "https://huggingface.co/mmwillet2/Kokoro_GGUF/resolve/main/Kokoro_espeak_Q8.gguf",
-        "https://huggingface.co/mmwillet2/Kokoro_GGUF/resolve/main/Kokoro_espeak_Q5.gguf",
         "https://huggingface.co/mmwillet2/Kokoro_GGUF/resolve/main/Kokoro_espeak_Q4.gguf"
     ]
     
@@ -94,12 +92,9 @@ def download_kokoro_model():
             continue
     
     print("❌ Failed to download model from all sources.")
-    print("💡 Please manually download the Kokoro model and place it in the models/ folder")
-    print("🔗 You can find the models at: https://huggingface.co/mmwillet2/Kokoro_GGUF/tree/main")
-    print("📋 Available models:")
-    print("   - Kokoro_espeak_Q8.gguf (186 MB) - Recommended")
-    print("   - Kokoro_espeak_Q5.gguf (180 MB)")
-    print("   - Kokoro_espeak_Q4.gguf (178 MB)")
+    print("💡 Please manually download the Kokoro Q4 model and place it in the models/ folder")
+    print("🔗 You can find the model at: https://huggingface.co/mmwillet2/Kokoro_GGUF/tree/main")
+    print("📋 Required model: Kokoro_espeak_Q4.gguf (178 MB)")
     return False
 
 def setup_environment():
@@ -132,7 +127,7 @@ app = Flask(__name__)
 
 # Global TTS service
 tts_service = None
-model_path = "./models/Kokoro_espeak_Q8.gguf"
+model_path = "./models/Kokoro_espeak_Q4.gguf"
 
 def load_model():
     """Load the Kokoro TTS model"""
@@ -344,7 +339,7 @@ if __name__ == '__main__':
     print("=" * 60)
     
     # Check if model exists after setup
-    model_path = "./models/Kokoro_espeak_Q8.gguf"
+    model_path = "./models/Kokoro_espeak_Q4.gguf"
     if os.path.exists(model_path):
         print(f"✅ Model found: {model_path}")
         print(f"📁 Model size: {os.path.getsize(model_path) / (1024*1024):.1f} MB")
