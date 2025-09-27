@@ -1,11 +1,13 @@
 # Kokoro TTS Module
 
-A powerful Text-to-Speech (TTS) web application using the Kokoro Q4 model, featuring an advanced Flask-based web interface with **fully automated setup**, **GPU acceleration**, and **intelligent fallback systems**.
+A powerful Text-to-Speech (TTS) web application using the Kokoro Q4 model, featuring an advanced Flask-based web interface with **fully automated setup**, **GPU acceleration**, **real-time streaming**, and **intelligent fallback systems**.
 
 ## 🎤 Features
 
 - **High-Quality Speech Synthesis**: Uses the Kokoro TTS Q4 model (178 MB) for natural-sounding speech
 - **🚀 GPU Acceleration**: Automatic CUDA detection and GPU offloading with llama-cpp-python
+- **📡 Real-Time Streaming**: WebSocket and HTTP streaming for low-latency audio generation
+- **🎵 Progressive Audio Playback**: Audio chunks play as they're generated
 - **🤖 Fully Automated Setup**: Zero-configuration installation - just run `python app.py`
 - **📦 Smart Dependency Management**: Automatically installs all requirements and pre-built CUDA wheels
 - **🌐 Modern Web Interface**: Responsive UI with real-time status monitoring and audio controls

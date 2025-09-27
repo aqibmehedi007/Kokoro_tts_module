@@ -11,15 +11,18 @@ import os
 import torch
 import soundfile as sf
 import numpy as np
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Generator, AsyncGenerator
 from pathlib import Path
+import threading
+import queue
+import time
 
 logger = logging.getLogger(__name__)
 
 class KokoroTTSService:
     """Text-to-Speech service using Kokoro model"""
     
-    def __init__(self, model_path: str = "./models/Kokoro_espeak_Q8.gguf"):
+    def __init__(self, model_path: str = "./models/Kokoro_espeak_Q4.gguf"):
         """
         Initialize Kokoro TTS service
         
@@ -57,11 +60,6 @@ class KokoroTTSService:
                 
             logger.info("Initializing Kokoro TTS model...")
             
-            # Check if model exists
-            if not self.model_path.exists():
-                logger.error(f"Kokoro model not found at: {self.model_path}")
-                return False
-            
             # Import kokoro library
             try:
                 from kokoro import KPipeline
@@ -69,16 +67,24 @@ class KokoroTTSService:
                 logger.error("Kokoro library not installed. Please install with: pip install kokoro>=0.9.2")
                 return False
             
-            # Initialize pipeline
-            self.pipeline = KPipeline(lang_code='a', device=self.device)
+            # Initialize pipeline with correct parameters
+            # Use 'a' for language code as it supports multiple languages
+            device_str = str(self.device)
+            self.pipeline = KPipeline(lang_code='a', device=device_str)
             
             # Test the pipeline with a simple phrase
             test_text = "Hello, this is a test."
             test_generator = self.pipeline(test_text, voice=self.default_voice)
             
-            # Consume the generator to test
-            for _ in test_generator:
-                break  # Just test that it works
+            # Consume the generator to test (get first chunk)
+            try:
+                first_chunk = next(iter(test_generator))
+                logger.info(f"Test generation successful, got chunk: {type(first_chunk)}")
+            except StopIteration:
+                logger.warning("Test generation returned no chunks")
+            except Exception as e:
+                logger.error(f"Test generation failed: {e}")
+                return False
             
             self.initialized = True
             logger.info("Kokoro TTS model initialized successfully")
@@ -124,9 +130,17 @@ class KokoroTTSService:
             
             # Collect audio data
             audio_segments = []
-            for i, (gs, ps, audio) in enumerate(generator):
-                if audio is not None and len(audio) > 0:
-                    audio_segments.append(audio)
+            for i, result in enumerate(generator):
+                # Extract audio tensor from result (result[2])
+                if len(result) >= 3:
+                    audio_tensor = result[2]  # Third element is the audio tensor
+                    if audio_tensor is not None and len(audio_tensor) > 0:
+                        # Convert tensor to numpy if needed
+                        if hasattr(audio_tensor, 'cpu'):
+                            audio_np = audio_tensor.cpu().numpy()
+                        else:
+                            audio_np = np.array(audio_tensor)
+                        audio_segments.append(audio_np)
             
             if not audio_segments:
                 logger.error("No audio generated from Kokoro")
@@ -146,6 +160,171 @@ class KokoroTTSService:
         except Exception as e:
             logger.error(f"Kokoro TTS synthesis failed: {e}")
             raise Exception(f"Speech synthesis failed: {str(e)}")
+    
+    async def synthesize_speech_streaming(self, text: str, voice: Optional[str] = None, chunk_size: int = 8192) -> AsyncGenerator[bytes, None]:
+        """
+        Convert text to speech using Kokoro with streaming output
+        
+        Args:
+            text: Text to convert to speech
+            voice: Voice to use (optional, defaults to self.default_voice)
+            chunk_size: Size of audio chunks to yield (in samples)
+            
+        Yields:
+            Audio data chunks as bytes (WAV format)
+        """
+        if not text or not text.strip():
+            logger.warning("Empty text provided for streaming TTS")
+            return
+        
+        # Ensure model is initialized
+        if not self.initialized:
+            if not await self.initialize():
+                raise Exception("Failed to initialize Kokoro TTS model")
+        
+        # Use provided voice or default
+        selected_voice = voice or self.default_voice
+        
+        # Validate voice
+        if selected_voice not in self.available_voices:
+            logger.warning(f"Voice '{selected_voice}' not available, using default")
+            selected_voice = self.default_voice
+        
+        try:
+            logger.info(f"Starting streaming TTS synthesis for {len(text)} characters using voice: {selected_voice}")
+            
+            # Generate speech using Kokoro
+            generator = self.pipeline(text, voice=selected_voice)
+            
+            # Stream audio chunks as they're generated
+            audio_buffer = []
+            total_samples = 0
+            
+            for i, result in enumerate(generator):
+                # Extract audio tensor from result (result[2])
+                if len(result) >= 3:
+                    audio_tensor = result[2]  # Third element is the audio tensor
+                    if audio_tensor is not None and len(audio_tensor) > 0:
+                        # Convert tensor to numpy if needed
+                        if hasattr(audio_tensor, 'cpu'):
+                            audio_np = audio_tensor.cpu().numpy()
+                        else:
+                            audio_np = np.array(audio_tensor)
+                        
+                        audio_buffer.extend(audio_np)
+                        total_samples += len(audio_np)
+                        
+                        # Yield chunks when buffer is large enough
+                        while len(audio_buffer) >= chunk_size:
+                            chunk_samples = audio_buffer[:chunk_size]
+                            audio_buffer = audio_buffer[chunk_size:]
+                            
+                        # Convert chunk to raw PCM data (no headers for combining)
+                        chunk_samples_np = np.array(chunk_samples, dtype=np.float32)
+                        # Convert to 16-bit PCM
+                        pcm_data = (chunk_samples_np * 32767).astype(np.int16).tobytes()
+                        yield pcm_data
+                        
+                        # Small delay to prevent overwhelming the client
+                        await asyncio.sleep(0.01)
+            
+            # Yield remaining audio in buffer
+            if audio_buffer:
+                chunk_bytes = io.BytesIO()
+                sf.write(chunk_bytes, np.array(audio_buffer), self.sample_rate, format='WAV', subtype='PCM_16')
+                yield chunk_bytes.getvalue()
+            
+            logger.info(f"Streaming TTS synthesis completed. Generated {total_samples} samples")
+            
+        except Exception as e:
+            logger.error(f"Kokoro TTS streaming synthesis failed: {e}")
+            raise Exception(f"Streaming speech synthesis failed: {str(e)}")
+    
+    def synthesize_speech_streaming_sync(self, text: str, voice: Optional[str] = None, chunk_size: int = 4096) -> Generator[bytes, None, None]:
+        """
+        Synchronous version of streaming TTS synthesis
+        
+        Args:
+            text: Text to convert to speech
+            voice: Voice to use (optional, defaults to self.default_voice)
+            chunk_size: Size of audio chunks to yield (in samples)
+            
+        Yields:
+            Audio data chunks as bytes (WAV format)
+        """
+        if not text or not text.strip():
+            logger.warning("Empty text provided for sync streaming TTS")
+            return
+        
+        # Ensure model is initialized
+        if not self.initialized:
+            logger.info("Model not initialized for sync streaming, initializing now...")
+            # Run async initialization in sync context
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            if not loop.run_until_complete(self.initialize()):
+                logger.error("Failed to initialize model for sync streaming")
+                return
+        
+        # Use provided voice or default
+        selected_voice = voice or self.default_voice
+        
+        # Validate voice
+        if selected_voice not in self.available_voices:
+            logger.warning(f"Voice '{selected_voice}' not available, using default")
+            selected_voice = self.default_voice
+        
+        try:
+            logger.info(f"Starting sync streaming TTS synthesis for {len(text)} characters using voice: {selected_voice}")
+            
+            # Generate speech using Kokoro
+            generator = self.pipeline(text, voice=selected_voice)
+            
+            # Stream audio chunks as they're generated
+            audio_buffer = []
+            total_samples = 0
+            
+            for i, result in enumerate(generator):
+                # Extract audio tensor from result (result[2])
+                if len(result) >= 3:
+                    audio_tensor = result[2]  # Third element is the audio tensor
+                    if audio_tensor is not None and len(audio_tensor) > 0:
+                        # Convert tensor to numpy if needed
+                        if hasattr(audio_tensor, 'cpu'):
+                            audio_np = audio_tensor.cpu().numpy()
+                        else:
+                            audio_np = np.array(audio_tensor)
+                        
+                        audio_buffer.extend(audio_np)
+                        total_samples += len(audio_np)
+                        
+                        # Yield chunks when buffer is large enough
+                        while len(audio_buffer) >= chunk_size:
+                            chunk_samples = audio_buffer[:chunk_size]
+                            audio_buffer = audio_buffer[chunk_size:]
+                            
+                        # Convert chunk to raw PCM data (no headers for combining)
+                        chunk_samples_np = np.array(chunk_samples, dtype=np.float32)
+                        # Convert to 16-bit PCM
+                        pcm_data = (chunk_samples_np * 32767).astype(np.int16).tobytes()
+                        yield pcm_data
+            
+            # Yield remaining audio in buffer
+            if audio_buffer:
+                chunk_bytes = io.BytesIO()
+                sf.write(chunk_bytes, np.array(audio_buffer), self.sample_rate, format='WAV', subtype='PCM_16')
+                yield chunk_bytes.getvalue()
+            
+            logger.info(f"Sync streaming TTS synthesis completed. Generated {total_samples} samples")
+            
+        except Exception as e:
+            logger.error(f"Kokoro TTS sync streaming synthesis failed: {e}")
+            raise Exception(f"Sync streaming speech synthesis failed: {str(e)}")
     
     def get_available_voices(self) -> Dict[str, Any]:
         """
