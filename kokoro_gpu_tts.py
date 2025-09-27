@@ -1,6 +1,6 @@
 """
-GPU-Optimized Kokoro TTS Service
-Production-ready streaming TTS with CUDA acceleration
+Simple Kokoro TTS Service
+Streaming TTS with GPU acceleration
 """
 
 import asyncio

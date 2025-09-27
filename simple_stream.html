@@ -138,6 +138,11 @@
             streamingStarted = false;
             nextStartTime = audioContext ? audioContext.currentTime : 0;
         }
+
+        // Auto-connect on page load
+        window.onload = function() {
+            connect();
+        };
     </script>
 </body>
 </html>

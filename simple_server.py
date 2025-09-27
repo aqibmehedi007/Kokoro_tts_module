@@ -1,6 +1,6 @@
 """
-Minimal Kokoro TTS Streaming Server
-Bare bones implementation for testing
+Simple Kokoro TTS Streaming Server
+Minimal implementation for streaming TTS
 """
 
 import asyncio
